@@ -1,7 +1,8 @@
 use tux_io_encoding_macros::ValueEnum;
 
 use crate::{
-    ConstTypedObjectType, EncodingError, RawDate, RawDateTime, RawTime, ReadableObjectType, TuxIOType, WritableObjectType
+    ConstTypedObjectType, EncodingError, RawDate, RawDateTime, RawTime, ReadableObjectType,
+    TuxIOType, WritableObjectType,
 };
 #[derive(Debug, Clone, PartialEq, ValueEnum)]
 pub enum ValueType {
@@ -21,10 +22,12 @@ pub enum ValueType {
     Date(RawDate),
     Time(RawTime),
     RawDateTime(RawDateTime),
+    #[cfg(feature = "uuid")]
+    Uuid(uuid::Uuid),
 }
 
-#[cfg(feature="get-size2")]
-mod get_size2_impl{
+#[cfg(feature = "get-size2")]
+mod get_size2_impl {
     use super::*;
     use get_size2::GetSize;
     impl GetSize for ValueType {
@@ -35,7 +38,10 @@ mod get_size2_impl{
                 _ => 0,
             }
         }
-        fn get_heap_size_with_tracker<T: get_size2::GetSizeTracker>(&self, tracker: T) -> (usize, T) {
+        fn get_heap_size_with_tracker<T: get_size2::GetSizeTracker>(
+            &self,
+            tracker: T,
+        ) -> (usize, T) {
             match self {
                 ValueType::String(s) => s.get_heap_size_with_tracker(tracker),
                 ValueType::Bytes(b) => b.get_heap_size_with_tracker(tracker),
@@ -43,5 +49,4 @@ mod get_size2_impl{
             }
         }
     }
-
 }

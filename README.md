@@ -20,16 +20,16 @@ After that. They will be aligned to 32 byte boundaries. The purpose of this is t
 The File Header is 32 bytes long and contains metadata about the file. It is used to identify the file format and provide information about the content.
 After the first 4 bytes. The content and ordering could change in the future.
 
-| Name              | Size | Note |
-| -------------     | ---- | ------ |
-| Magic Value       | 3 bytes | A byte array of b'TUX' or [0x54, 0x55, 0x58] |
-| Version           | 1 byte  | Currently 0 |
-| Tags Start        | 2 bytes  | Starting Byte for the tags. This includes the size of the ObjectHeader if set to 0 no tags |
-| Compression Type  | 1 byte   | See Compression Type Below |
-| Content Start     | 4 bytes  | Starting Byte for the content. This includes the size of the ObjectHeader and the tags. |
-| Content Length    | 8 bytes  |  |
-| Bit Flags         | 1 byte   | Bit flags for additional metadata(Reserved should be 0 until defined layer) |
-| PlaceHolder/Reserved | 12 bytes| I wanted this to have extra room just in case. Also makes this object an even 32 bytes|
+| Name                 | Size     | Note |
+| -------------------  | ----     | ------ |
+| Magic Value          | 3 bytes  | A byte array of b'TUX' or [0x54, 0x55, 0x58] |
+| Version              | 1 byte   | Currently 0 |
+| Tags Start           | 2 bytes  | Starting Byte for the tags. This includes the size of the ObjectHeader if set to 0 no tags |
+| Compression Type     | 5 byte   | See Compression Type Below |
+| Content Start        | 4 bytes  | Starting Byte for the content. This includes the size of the ObjectHeader and the tags. |
+| Content Length       | 8 bytes  |  |
+| Bit Flags            | 1 byte   | Bit flags for additional metadata(Reserved should be 0 until defined layer) |
+| PlaceHolder/Reserved | 8 bytes  | I wanted this to have extra room just in case. Also makes this object an even 32 bytes|
 
 ### File Metadata
 File Meta is stored in the same structure as Tags.
@@ -43,26 +43,26 @@ File Meta is stored in the same structure as Tags.
 Metadata should be as small as possible and only store data that is deemed necessary for the system to function. The overall goal of metadata is also to be searchable. So you can say get me the value of the `content_type`  It will not return all
 
 ### Data Types
-| data type     | Type Key |
-| ------------- | ---------  |
-| byte          | 0     |
-| u16           | 1     |
-| u32           | 2     |
-| u64           | 3     |
-| i8            | 4     |
-| i16           | 5     |
-| i32           | 6     |
-| i64           | 7     |
-| f32           | 8     |
-| f64           | 9     |
-| boolean       | 10    |
-| byte array    | 11    |
-| string        | 12    |
-| date          | 13    |
-| time          | 14    |
-| timezone      | 15    |
-| datetime      | 16    |
-| uuid          | 17    |
+| data type     | Type Key  |
+| ------------- | --------- |
+| byte          | 0         |
+| u16           | 1         |
+| u32           | 2         |
+| u64           | 3         |
+| i8            | 4         |
+| i16           | 5         |
+| i32           | 6         |
+| i64           | 7         |
+| f32           | 8         |
+| f64           | 9         |
+| boolean       | 10        |
+| byte array    | 11        |
+| string        | 12        |
+| date          | 13        |
+| time          | 14        |
+| timezone      | 15        |
+| datetime      | 16        |
+| uuid          | 17        |
 
 #### String
 All strings are UTF-8 encoded and limited to 65535 bytes. The string is prefixed with a u16 length field.
@@ -91,7 +91,13 @@ The value is then encoded using the data type format.
 `{number of pairs:u16}{key: string}{type_id: u8}{value: data type}`
 
 ## Compression
-Compression is used on the object content to reduce file size. The compression type is specified in the file header and can be one of the following:
-| Name              | Key | Other |
-| -------------     | ---- | ------ |
-| None              | 0   |  |
+Compression is used on the object content to reduce file size.
+The compression is stored with 5 bytes in the header. The first byte is the compression type. The next 4 bytes are the compression level or other data depending on the compression type.
+
+### Available Compression Types
+
+| Name              | Key | Other                                        |
+| ----------------- | ----| -------------------------------------------- |
+| None              | 0   | Next 4 bytes are empty and will be ignored   |
+| ZSTD              | 1   | Next 4 Bytes are the compression level (i32) |
+| Gzip              | 2   | Next 4 Bytes are the compression level (u32) |

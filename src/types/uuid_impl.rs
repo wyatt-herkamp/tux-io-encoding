@@ -45,3 +45,47 @@ impl WritableObjectType for Uuid {
         Ok(())
     }
 }
+
+#[cfg(feature = "tokio")]
+mod tokio_async {
+    use uuid::Uuid;
+
+    use crate::tokio_io::{AsyncReadableObjectType, AsyncWritableObjectType};
+    use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+    impl AsyncWritableObjectType for Uuid {
+        fn write_to_async_writer<W>(
+            &self,
+            writer: &mut W,
+        ) -> impl Future<Output = Result<(), crate::EncodingError>> + Send
+        where
+            Self: Sync,
+            W: AsyncWrite + Unpin + Send,
+        {
+            async move {
+                writer
+                    .write_all(self.as_bytes())
+                    .await
+                    .map_err(crate::EncodingError::IOError)?;
+                Ok(())
+            }
+        }
+    }
+    impl AsyncReadableObjectType for Uuid {
+        fn read_from_async_reader<R>(
+            reader: &mut R,
+        ) -> impl Future<Output = Result<Self, crate::EncodingError>> + Send
+        where
+            Self: Sync + Sized,
+            R: AsyncRead + Unpin + Send,
+        {
+            async move {
+                let mut buf = [0u8; 16];
+                reader
+                    .read_exact(&mut buf)
+                    .await
+                    .map_err(crate::EncodingError::IOError)?;
+                Ok(Uuid::from_bytes(buf))
+            }
+        }
+    }
+}

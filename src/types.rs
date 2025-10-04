@@ -8,9 +8,9 @@ mod bytes;
 mod map;
 mod num;
 mod option;
+mod time;
 #[cfg(feature = "uuid")]
 mod uuid_impl;
-mod time;
 pub use time::*;
 impl TuxIOType for bool {
     fn const_size(&self) -> Option<usize> {

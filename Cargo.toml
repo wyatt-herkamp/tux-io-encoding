@@ -1,5 +1,5 @@
 [workspace]
-members = ["macros"]
+members = [ "cli","macros"]
 resolver = "3"
 [workspace.package]
 edition = "2024"
@@ -20,8 +20,11 @@ repository.workspace = true
 tux-io-encoding-macros = { path = "./macros" }
 thiserror = "2"
 uuid = { version = "1", optional = true }
-tokio = { version = "1", features = ["full"] }
-chrono = {version = "0.4", optional = true}
 http = "1"
 bytes = {version = "1", optional = true}
 get-size2 = { version = "0.7", optional = true }
+
+
+chrono = {version = "0.4", optional = true}
+
+tokio = { version = "1", features = ["io-util"], optional = true}

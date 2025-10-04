@@ -45,6 +45,7 @@ pub struct RawTime {
     pub seconds_from_midnight: u32,
     pub nanoseconds: u32,
 }
+
 impl WritableObjectType for RawTime {
     fn write_to_writer<W: std::io::Write>(
         &self,
@@ -151,11 +152,10 @@ impl Debug for RawDateTime {
 }
 
 #[cfg(feature = "get-size2")]
-mod get_size_impl{
+mod get_size_impl {
     use get_size2::GetSize;
 
     use super::*;
-
 
     impl GetSize for RawDateTime {}
     impl GetSize for RawDate {}

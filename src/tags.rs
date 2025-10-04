@@ -130,8 +130,8 @@ impl<Tag: TagKeyType> ReadableObjectType for Tags<Tag> {
         Ok(Tags(tags))
     }
 }
-#[cfg(feature="get-size2")]
-mod get_size2{
+#[cfg(feature = "get-size2")]
+mod get_size2 {
     use get_size2::GetSize;
 
     use crate::{TagKeyType, Tags};
@@ -140,11 +140,13 @@ mod get_size2{
         fn get_heap_size(&self) -> usize {
             self.0.get_heap_size()
         }
-        fn get_heap_size_with_tracker<U: get_size2::GetSizeTracker>(&self, tracker: U) -> (usize, U) {
+        fn get_heap_size_with_tracker<U: get_size2::GetSizeTracker>(
+            &self,
+            tracker: U,
+        ) -> (usize, U) {
             self.0.get_heap_size_with_tracker(tracker)
         }
     }
-
 }
 #[cfg(test)]
 mod tests {

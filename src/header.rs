@@ -1,8 +1,7 @@
 use std::io::SeekFrom;
 
 use crate::{
-    EncodingError, FileSections, ReadableObjectType, TuxIOType, WritableObjectType,
-    compression_types::CompressionTypes,
+    compression_types::{CompressionTypes, NoCompression}, EncodingError, FileSections, ReadableObjectType, TuxIOType, WritableObjectType
 };
 pub const MAGIC_VALUE: [u8; 3] = [0x54, 0x55, 0x58]; // "TUX"
 const CURRENT_VERSION: u8 = 0;
@@ -48,7 +47,7 @@ impl Default for ObjectHeader {
     fn default() -> Self {
         ObjectHeader {
             version: CURRENT_VERSION,
-            compression_type: CompressionTypes::None,
+            compression_type: CompressionTypes::None(NoCompression::default()),
             tags_start: 0,
             content_start: 0,
             content_length: 0,
@@ -87,12 +86,24 @@ impl ReadableObjectType for ObjectHeader {
         if version != CURRENT_VERSION {
             return Err(EncodingError::InvalidMagic);
         }
-        let compression_type = CompressionTypes::try_from(content[4])?;
-        let tags_start = u16::read_from_bytes(&content[5..7])?;
-        let content_start = u32::read_from_bytes(&content[7..11])?;
-        let content_length = u64::read_from_bytes(&content[11..19])?;
-        let bit_flags = content[19];
-
+        let compression_type_bytes = &content[4..9];
+        let compression_type = CompressionTypes::try_from(compression_type_bytes)?;
+        let tags_start = u16::from_le_bytes(
+            content[9..11]
+                .try_into()
+                .map_err(|_| EncodingError::UnexpectedEof)?,
+        );
+        let content_start = u32::from_le_bytes(
+            content[11..15]
+                .try_into()
+                .map_err(|_| EncodingError::UnexpectedEof)?,
+        );
+        let content_length = u64::from_le_bytes(
+            content[15..23]
+                .try_into()
+                .map_err(|_| EncodingError::UnexpectedEof)?,
+        );
+        let bit_flags = content[23];
         Ok(ObjectHeader {
             version,
             compression_type,
@@ -113,7 +124,7 @@ impl WritableObjectType for ObjectHeader {
         self.content_length.write_to_writer(writer)?;
         writer.write_all(&[self.bit_flags])?;
         if self.const_size().is_some() {
-            let padding = 32 - (MAGIC_VALUE.len() + 1 + 1 + 2 + 4 + 8 + 1);
+            let padding = 32 - (MAGIC_VALUE.len() + 1 + 5 + 2 + 4 + 8 + 1);
             if padding > 0 {
                 writer.write_all(&vec![0; padding])?;
             }
@@ -121,13 +132,11 @@ impl WritableObjectType for ObjectHeader {
         Ok(())
     }
 }
-#[cfg(feature="get-size2")]
-mod get_size2_impl{
+#[cfg(feature = "get-size2")]
+mod get_size2_impl {
     use super::*;
     use get_size2::GetSize;
-    impl GetSize for ObjectHeader{
-
-    }
+    impl GetSize for ObjectHeader {}
 }
 #[cfg(test)]
 mod tests {
@@ -136,7 +145,7 @@ mod tests {
     fn test_object_header_read_write() {
         let header = ObjectHeader {
             version: CURRENT_VERSION,
-            compression_type: CompressionTypes::None,
+            compression_type: CompressionTypes::None(NoCompression),
             tags_start: 10,
             content_start: 20,
             content_length: 100,
@@ -154,7 +163,7 @@ mod tests {
     fn test_size_math() {
         let header = ObjectHeader {
             version: CURRENT_VERSION,
-            compression_type: CompressionTypes::None,
+            compression_type: CompressionTypes::default(),
             tags_start: 64,
             content_start: 256,
             content_length: 256,

@@ -4,7 +4,7 @@ use bytes::{Bytes, BytesMut};
 
 use crate::{
     ConstTypedObjectType, EncodingError, ReadableObjectType, TuxIOType, TypedObjectType,
-    WritableObjectType, standard::is_size_allowed, typed_object_type,
+    WritableObjectType, typed_object_type, types::is_size_allowed,
 };
 
 impl TuxIOType for Bytes {

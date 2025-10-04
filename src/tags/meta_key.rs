@@ -13,7 +13,6 @@ pub type MetadataMap = Tags<MetaKey>;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MetaKey(HeaderName);
 
-
 impl Display for MetaKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.as_str())
@@ -71,13 +70,12 @@ impl ReadableObjectType for MetaKey {
     }
 }
 
-
 #[cfg(feature = "get-size2")]
 mod get_size2_impl {
     use super::*;
     use get_size2::GetSize;
 
-    impl GetSize for MetaKey{
+    impl GetSize for MetaKey {
         // TODO: Technically the heap size is not included because HeaderName doesn't expose a way to check if the internal storage is heap allocated or not.
     }
 }

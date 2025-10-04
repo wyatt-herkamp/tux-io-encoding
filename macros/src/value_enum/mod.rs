@@ -42,6 +42,7 @@ impl ValueVariant {
             Self::#ident(v) => v.size(),
         }
     }
+    #[allow(clippy::wrong_self_convention)]
     pub fn from_impl(&self) -> TokenStream {
         let inner_type = self.inner_type();
         let ident = &self.variant.ident;
@@ -54,6 +55,7 @@ impl ValueVariant {
             }
         }
     }
+    #[allow(clippy::wrong_self_convention)]
     pub fn into_option(&self) -> TokenStream {
         let inner_type = self.inner_type();
         let ident = &self.variant.ident;
@@ -131,10 +133,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     let read_size_variants = variants.iter().map(|v| v.read_size()).collect::<Vec<_>>();
 
     let from_impl = variants.iter().map(|v| v.from_impl()).collect::<Vec<_>>();
-    let into_option_impl = variants
-        .iter()
-        .map(|v| v.into_option())
-        .collect::<Vec<_>>();
+    let into_option_impl = variants.iter().map(|v| v.into_option()).collect::<Vec<_>>();
     let expanded = quote! {
         #(#from_impl)*
         #(#into_option_impl)*

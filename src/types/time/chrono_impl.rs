@@ -14,7 +14,7 @@ mod date {
 
     use crate::{
         ConstTypedObjectType, RawDate, ReadableObjectType, TuxIOType, TypedObjectType,
-        WritableObjectType, time::chrono_impl::ChronoError,
+        WritableObjectType, types::time::chrono_impl::ChronoError,
     };
 
     use super::EncodingError;
@@ -113,7 +113,7 @@ mod time {
 
     use crate::{
         ConstTypedObjectType, RawTime, ReadableObjectType, TuxIOType, TypedObjectType, ValueType,
-        WritableObjectType, time::chrono_impl::ChronoError,
+        WritableObjectType, types::time::chrono_impl::ChronoError,
     };
 
     use super::EncodingError;
@@ -200,7 +200,7 @@ mod fixed_offset {
 
     use crate::{
         ConstTypedObjectType, RawTimeZone, ReadableObjectType, TuxIOType, TypedObjectType,
-        WritableObjectType, time::chrono_impl::ChronoError,
+        WritableObjectType, types::time::chrono_impl::ChronoError,
     };
 
     use super::EncodingError;
@@ -271,7 +271,7 @@ mod date_time {
 
     use crate::{
         ConstTypedObjectType, EncodingError, RawDateTime, ReadableObjectType, TuxIOType,
-        TypedObjectType, ValueType, WritableObjectType, time::chrono_impl::ChronoError,
+        TypedObjectType, ValueType, WritableObjectType, types::time::chrono_impl::ChronoError,
     };
 
     type DateTimeFixed = chrono::DateTime<chrono::FixedOffset>;

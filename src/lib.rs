@@ -1,15 +1,18 @@
-mod compression_types;
+pub mod compression_types;
 mod header;
-mod types;
 mod tags;
+#[cfg(feature = "tokio")]
+pub mod tokio_io;
+pub mod fs;
+mod types;
 mod value;
 use std::io::{Read, Seek, SeekFrom};
 
 pub use compression_types::CompressionTypes;
 pub use header::*;
 pub use tags::*;
-pub use types::{RawDate, RawTime, RawTimeZone, RawDateTime};
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+pub use types::{RawDate, RawDateTime, RawTime, RawTimeZone};
+
 pub use value::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileSections {
@@ -132,23 +135,7 @@ pub trait ReadWithSize: ReadableObjectType {
 }
 pub trait WritableObjectType: TuxIOType {
     fn write_to_writer<W: std::io::Write>(&self, writer: &mut W) -> Result<(), EncodingError>;
-    fn write_to_async_writer<W>(
-        &self,
-        writer: &mut W,
-    ) -> impl Future<Output = Result<(), EncodingError>> + Send
-    where
-        Self: Sync,
-        W: AsyncWrite + Unpin + Send,
-    {
-        async move {
-            let result = self.write_to_bytes()?;
-            writer
-                .write_all(&result)
-                .await
-                .map_err(EncodingError::IOError)?;
-            Ok(())
-        }
-    }
+
     fn write_to_bytes(&self) -> Result<Vec<u8>, EncodingError> {
         let mut buffer = Vec::with_capacity(self.size());
         self.write_to_writer(&mut buffer)?;

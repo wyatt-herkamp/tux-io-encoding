@@ -59,6 +59,47 @@ macro_rules! number {
                 Ok(Self::from_le_bytes(*bytes))
             }
         }
+        #[cfg(feature = "tokio")]
+        impl crate::tokio_io::AsyncWritableObjectType for $type {
+            fn write_to_async_writer<W>(
+                &self,
+                writer: &mut W,
+            ) -> impl Future<Output = Result<(), crate::EncodingError>> + Send
+            where
+                Self: Sync,
+                W: tokio::io::AsyncWrite + Unpin + Send {
+                use tokio::io::AsyncWriteExt;
+                async move {
+                    writer
+                        .write_all(&self.to_le_bytes())
+                        .await
+                        .map_err(crate::EncodingError::IOError)?;
+                    Ok(())
+                }
+            }
+        }
+        #[cfg(feature = "tokio")]
+            impl crate::tokio_io::AsyncReadableObjectType for $type{
+        fn read_from_async_reader<R>(
+            reader: &mut R,
+        ) -> impl Future<Output = Result<Self, crate::EncodingError>> + Send
+        where
+            Self: Sync + Sized,
+            R: tokio::io::AsyncRead + Unpin + Send {
+            use tokio::io::AsyncReadExt;
+            async move {
+                let mut buf = [0u8;  $size];
+                reader
+                    .read_exact(&mut buf)
+                    .await
+                    .map_err(crate::EncodingError::IOError)?;
+                Ok(Self::from_le_bytes(buf))
+            }
+        }
+            }
+
+
+
         )*
 
     };
