@@ -1,7 +1,7 @@
 use std::io::Read;
 mod types;
+use crate::{EncodingError, ReadableObjectType, TuxIOType, WritableObjectType};
 pub use types::*;
-use crate::{ EncodingError, ReadableObjectType, TuxIOType, WritableObjectType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompressionTypes {
@@ -14,17 +14,17 @@ impl Default for CompressionTypes {
         CompressionTypes::None(NoCompression)
     }
 }
-impl TryFrom<[u8;5]> for CompressionTypes {
+impl TryFrom<[u8; 5]> for CompressionTypes {
     type Error = EncodingError;
     fn try_from(value: [u8; 5]) -> Result<Self, Self::Error> {
         match value[0] {
             0 => Ok(CompressionTypes::None(NoCompression)),
-            1 => {
-                Ok(CompressionTypes::ZSTD(ZStdCompressionType::read_from_bytes(&value)?))
-            }
-            2 => {
-                Ok(CompressionTypes::Gzip(GzipCompressionType::read_from_bytes(&value)?))
-            }
+            1 => Ok(CompressionTypes::ZSTD(
+                ZStdCompressionType::read_from_bytes(&value)?,
+            )),
+            2 => Ok(CompressionTypes::Gzip(
+                GzipCompressionType::read_from_bytes(&value)?,
+            )),
             other => Err(EncodingError::InvalidCompressionType(other)),
         }
     }

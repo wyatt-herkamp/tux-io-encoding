@@ -1,9 +1,9 @@
 pub mod compression_types;
+pub mod fs;
 mod header;
 mod tags;
 #[cfg(feature = "tokio")]
 pub mod tokio_io;
-pub mod fs;
 mod types;
 mod value;
 use std::io::{Read, Seek, SeekFrom};
@@ -16,9 +16,15 @@ pub use types::{RawDate, RawDateTime, RawTime, RawTimeZone};
 pub use value::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileSections {
+    /// Object Header Start
     Header,
+    /// Object Metadata Start
+    ///
+    /// Always 32 bytes
     Metadata,
+    /// Object Tags Start
     Tags,
+    /// Object Content Start
     Content,
 }
 
@@ -78,6 +84,7 @@ pub enum EncodingError {
     TypeTooLarge(usize),
     #[error("{0}")]
     OtherDecodingError(Box<dyn std::error::Error + Send + Sync>),
+
     #[error("Mismatched Object Type expected {0}, found {1}")]
     MismatchedObjectType(u8, u8),
 }
@@ -86,10 +93,13 @@ impl EncodingError {
         EncodingError::OtherDecodingError(Box::new(err))
     }
 }
+/// A Type Supported by TuxIOEncoding
 pub trait TuxIOType {
+    /// If the type is fixed size, return the size.
     fn const_size(&self) -> Option<usize> {
         None
     }
+    /// Calculates the size of the object.
     fn size(&self) -> usize;
 }
 pub trait ReadableObjectType: TuxIOType {

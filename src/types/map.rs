@@ -1,10 +1,14 @@
-use std::{collections::HashMap, hash::Hash, io::SeekFrom};
+use std::{
+    collections::HashMap,
+    hash::{BuildHasher, Hash},
+    io::SeekFrom,
+};
 
 use crate::{EncodingError, ReadableObjectType, TuxIOType, TypedObjectType, WritableObjectType};
 
-impl<K, V> TuxIOType for HashMap<K, V>
+impl<K, V, S> TuxIOType for HashMap<K, V, S>
 where
-    K: TuxIOType + TypedObjectType + std::hash::Hash + Eq,
+    K: TuxIOType + TypedObjectType + Hash + Eq,
     V: TuxIOType + TypedObjectType,
 {
     fn size(&self) -> usize {
@@ -17,9 +21,9 @@ where
     }
 }
 
-impl<K, V> ReadableObjectType for HashMap<K, V>
+impl<K, V, S: Default + BuildHasher> ReadableObjectType for HashMap<K, V, S>
 where
-    K: TuxIOType + TypedObjectType + std::hash::Hash + Eq + ReadableObjectType,
+    K: TuxIOType + TypedObjectType + Hash + Eq + ReadableObjectType,
     V: TuxIOType + TypedObjectType + ReadableObjectType,
 {
     fn read_size<R: std::io::Read + std::io::Seek>(reader: &mut R) -> Result<usize, EncodingError> {
@@ -49,7 +53,7 @@ where
             ));
         }
 
-        let mut map = HashMap::with_capacity(read_length as usize);
+        let mut map = HashMap::with_capacity_and_hasher(read_length as usize, S::default());
         for _ in 0..read_length {
             let key = K::read_from_reader(reader)?;
             let value = V::read_from_reader(reader)?;
@@ -59,7 +63,7 @@ where
     }
 }
 
-impl<K, V> WritableObjectType for HashMap<K, V>
+impl<K, V, S: BuildHasher> WritableObjectType for HashMap<K, V, S>
 where
     K: TuxIOType + TypedObjectType + Hash + Eq + WritableObjectType,
     V: TuxIOType + TypedObjectType + WritableObjectType,
@@ -74,5 +78,25 @@ where
             v.write_to_writer(writer)?;
         }
         Ok(())
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ahash::RandomState;
+
+    #[test]
+    fn test_custom_hasher() {
+        let mut map = HashMap::with_capacity_and_hasher(10, RandomState::default());
+        map.insert(1, "one".to_string());
+        map.insert(2, "two".to_string());
+
+        let mut buffer = Vec::new();
+        map.write_to_writer(&mut buffer).unwrap();
+
+        let mut reader = &buffer[..];
+        let read_map = HashMap::<i32, String, RandomState>::read_from_reader(&mut reader).unwrap();
+
+        assert_eq!(map, read_map);
     }
 }

@@ -56,7 +56,8 @@ impl ReadableObjectType for ZStdCompressionType {
         );
         Ok(ZStdCompressionType(level))
     }
-}#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 
 pub struct GzipCompressionType(pub u32);
 impl TuxIOType for GzipCompressionType {
@@ -155,4 +156,14 @@ impl ReadableObjectType for NoCompression {
         }
         Ok(NoCompression)
     }
+}
+
+#[cfg(feature = "get-size2")]
+mod get_size2_impl {
+    use super::*;
+    use get_size2::GetSize;
+
+    impl GetSize for NoCompression {}
+    impl GetSize for ZStdCompressionType {}
+    impl GetSize for GzipCompressionType {}
 }

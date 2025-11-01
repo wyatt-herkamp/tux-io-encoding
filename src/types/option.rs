@@ -1,3 +1,8 @@
+//! Option type implementation for TuxIOType.
+//!
+//! If the option contains a value, it is written as a 1 followed by the value.
+//! If the option is None, it is written as a 0.
+
 use std::io::Seek;
 
 use crate::{EncodingError, ReadableObjectType, TuxIOType, WritableObjectType};
@@ -32,15 +37,12 @@ impl<T: TuxIOType + ReadableObjectType> ReadableObjectType for Option<T> {
 }
 impl<T: TuxIOType + WritableObjectType> WritableObjectType for Option<T> {
     fn write_to_writer<W: std::io::Write>(&self, writer: &mut W) -> Result<(), EncodingError> {
-        match self {
-            Some(inner) => {
-                writer.write_all(&[1])?;
-                inner.write_to_writer(writer)?;
-            }
-            None => {
-                writer.write_all(&[0])?;
-            }
-        }
+        let Some(inner) = self else {
+            writer.write_all(&[0])?;
+            return Ok(());
+        };
+        writer.write_all(&[1])?;
+        inner.write_to_writer(writer)?;
         Ok(())
     }
 }

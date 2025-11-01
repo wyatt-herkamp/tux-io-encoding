@@ -1,25 +1,32 @@
 use std::io::SeekFrom;
 
 use crate::{
-    compression_types::{CompressionTypes, NoCompression}, EncodingError, FileSections, ReadableObjectType, TuxIOType, WritableObjectType
+    EncodingError, FileSections, ReadableObjectType, TuxIOType, WritableObjectType,
+    compression_types::{CompressionTypes, NoCompression},
 };
 pub const MAGIC_VALUE: [u8; 3] = [0x54, 0x55, 0x58]; // "TUX"
 const CURRENT_VERSION: u8 = 0;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectHeader {
+    /// Version of TuxIO Object
+    /// Current version is 0
     pub version: u8,
+    /// Compression type of the object
+    ///
+    /// Compression only applies to the content of the object not metadata or tags
     pub compression_type: CompressionTypes,
+    /// The byte offset that the object tags start at
     pub tags_start: u16,
+    /// The byte offset that the object content starts at
     pub content_start: u32,
+    /// The length of the content in bytes
     pub content_length: u64,
+    /// Bit flags for the object
+    ///
+    /// Currently unused
     pub bit_flags: u8,
 }
 impl ObjectHeader {
-    /// Returns true if the object has tags.
-    #[inline(always)]
-    pub fn has_tags(&self) -> bool {
-        self.tags_start != 0
-    }
     /// Returns the amount of space reserved for tags in the file.
     ///
     /// ### Note
@@ -29,11 +36,13 @@ impl ObjectHeader {
         let content_start = self.content_start as usize;
         content_start - tags_start
     }
+    /// Returns the amount of space used for metadata and tags in the file.
     pub fn meta_and_tag_space(&self) -> usize {
         let meta_start = 32; // The size of the ObjectHeader
         let content_start = self.content_start as usize;
         content_start - meta_start
     }
+    /// Creates a [SeekFrom] for the given section.
     pub fn seek(&self, section: FileSections) -> SeekFrom {
         match section {
             FileSections::Header => SeekFrom::Start(0),
@@ -47,7 +56,7 @@ impl Default for ObjectHeader {
     fn default() -> Self {
         ObjectHeader {
             version: CURRENT_VERSION,
-            compression_type: CompressionTypes::None(NoCompression::default()),
+            compression_type: CompressionTypes::None(NoCompression),
             tags_start: 0,
             content_start: 0,
             content_length: 0,
@@ -56,6 +65,9 @@ impl Default for ObjectHeader {
     }
 }
 impl ObjectHeader {
+    /// Ensure's that a header starts with [MAGIC_VALUE]
+    ///
+    /// Then returns the version byte.
     pub fn header_entry(entry: &[u8]) -> Result<u8, EncodingError> {
         if entry[0..3] != MAGIC_VALUE {
             return Err(EncodingError::InvalidMagic);
@@ -82,6 +94,22 @@ impl ReadableObjectType for ObjectHeader {
     {
         let mut content = [0u8; 32];
         reader.read_exact(&mut content)?;
+        Self::read_from_bytes(&content)
+    }
+    fn skip<R: std::io::Read + std::io::Seek>(reader: &mut R) -> Result<(), EncodingError>
+    where
+        Self: Sized,
+    {
+        reader.seek(SeekFrom::Start(32))?;
+        Ok(())
+    }
+    fn read_from_bytes(content: &[u8]) -> Result<Self, EncodingError>
+    where
+        Self: Sized,
+    {
+        if content.len() < 32 {
+            return Err(EncodingError::UnexpectedEof);
+        }
         let version = Self::header_entry(&content[0..4])?;
         if version != CURRENT_VERSION {
             return Err(EncodingError::InvalidMagic);
@@ -114,6 +142,7 @@ impl ReadableObjectType for ObjectHeader {
         })
     }
 }
+
 impl WritableObjectType for ObjectHeader {
     fn write_to_writer<W: std::io::Write>(&self, writer: &mut W) -> Result<(), EncodingError> {
         writer.write_all(&MAGIC_VALUE)?;
@@ -130,6 +159,37 @@ impl WritableObjectType for ObjectHeader {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(feature = "tokio")]
+mod tokio_async {
+    //! Async implementation for tokio
+    //!
+    //! Reading is done by reading all 32 bytes into a buffer and then parsing it.
+    use tokio::io::{AsyncRead, AsyncReadExt};
+
+    use super::ObjectHeader;
+    use crate::{ReadableObjectType, tokio_io::*};
+
+    impl AsyncWritableObjectType for ObjectHeader {}
+    impl AsyncReadableObjectType for ObjectHeader {
+        fn read_from_async_reader<R>(
+            reader: &mut R,
+        ) -> impl Future<Output = Result<Self, crate::EncodingError>> + Send
+        where
+            Self: Sync + Sized,
+            R: AsyncRead + Unpin + Send,
+        {
+            async move {
+                let mut buf = [0u8; 32];
+                reader
+                    .read_exact(&mut buf)
+                    .await
+                    .map_err(crate::EncodingError::IOError)?;
+                <ObjectHeader as ReadableObjectType>::read_from_bytes(&buf)
+            }
+        }
     }
 }
 #[cfg(feature = "get-size2")]
