@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use tux_io_encoding_macros::ObjectType;
 #[cfg(feature = "chrono")]
-mod chrono_impl;
+pub mod chrono_impl;
 
 use crate::{
     ConstTypedObjectType, ReadableObjectType, TuxIOType, TypedObjectType, WritableObjectType,
