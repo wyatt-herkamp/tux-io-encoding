@@ -14,6 +14,9 @@ pub use tags::*;
 pub use types::{RawDate, RawDateTime, RawTime, RawTimeZone};
 
 pub use value::*;
+
+#[cfg(feature = "chrono")]
+pub use types::chrono_impl::ChronoError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileSections {
     /// Object Header Start
