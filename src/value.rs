@@ -25,6 +25,15 @@ pub enum ValueType {
     #[cfg(feature = "uuid")]
     Uuid(uuid::Uuid),
 }
+impl ValueType {
+    /// Returns the string representation of the value if it is a string.
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            ValueType::String(s) => Some(s),
+            _ => None,
+        }
+    }
+}
 
 #[cfg(feature = "get-size2")]
 mod get_size2_impl {
