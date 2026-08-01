@@ -62,7 +62,7 @@ impl WritableObjectType for CompressionTypes {
 }
 impl ReadableObjectType for CompressionTypes {
     fn read_size<R: Read>(_: &mut R) -> Result<usize, EncodingError> {
-        Ok(1)
+        Ok(5)
     }
     fn read_from_reader<R: Read>(reader: &mut R) -> Result<Self, EncodingError>
     where
@@ -77,7 +77,7 @@ impl ReadableObjectType for CompressionTypes {
     where
         Self: Sized,
     {
-        if bytes.len() <= 5 {
+        if bytes.len() < 5 {
             return Err(EncodingError::UnexpectedEof);
         }
         let buffer: [u8; 5] = bytes[0..5]

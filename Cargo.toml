@@ -1,33 +1,82 @@
 [workspace]
-members = [ "cli","macros"]
+members = ["cli", "macros"]
 resolver = "3"
+
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
 authors = ["Wyatt Herkamp <wherkamp@gmail.com>"]
 repository = "https://github.com/wyatt-herkamp/tux-io-encoding"
+rust-version = "1.89"
+
+# Hoisted so the workspace holds one version of each, matching how the other TuxIO workspaces are set
+# up. This section was empty while every member declared its own versions.
 [workspace.dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2.0", features = ["full"] }
+thiserror = "2"
+uuid = "1"
+http = "1"
+bytes = "1"
+get-size2 = "0.7"
+chrono = "0.4"
+tokio = "1"
+zstd = "0.13"
+flate2 = "1"
+ahash = "0.8"
 
 [package]
 name = "tux-io-encoding"
 version = "0.1.0"
+description = "Binary encoding and filesystem layout for TuxIO objects: a header, typed metadata and tag maps, and a content section in one file"
+keywords = ["encoding", "binary", "storage", "object"]
+categories = ["encoding", "filesystem"]
+readme = "README.md"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+rust-version.workspace = true
+
+[features]
+default = []
+# Value and metadata support for `uuid::Uuid`.
+uuid = ["dep:uuid"]
+# `bytes::Bytes` as a value type.
+bytes = ["dep:bytes"]
+# Heap size reporting through `get-size2`.
+get-size2 = ["dep:get-size2"]
+# Conversions between the raw date/time types and `chrono`.
+chrono = ["dep:chrono"]
+# Async readers and writers for the object file layer.
+tokio = ["dep:tokio"]
+# Content compression codecs. The header can name a codec regardless; these features are what make
+# it possible to actually read or write compressed content.
+zstd = ["dep:zstd"]
+gzip = ["dep:flate2"]
 
 [dependencies]
-tux-io-encoding-macros = { path = "./macros" }
-thiserror = "2"
-uuid = { version = "1", optional = true }
-http = "1"
-bytes = {version = "1", optional = true}
-get-size2 = { version = "0.7", optional = true }
-
-
-chrono = {version = "0.4", optional = true}
-
-tokio = { version = "1", features = ["io-util"], optional = true}
+# A version alongside the path, so `cargo publish` can resolve it. A bare path dependency cannot be
+# published: the registry has nothing to point at.
+tux-io-encoding-macros = { path = "./macros", version = "0.1.0" }
+thiserror.workspace = true
+uuid = { workspace = true, optional = true }
+# Not optional, and not a candidate for it: a metadata key *is* an HTTP header name (`MetaKey`), which
+# is the format's model for metadata rather than an add-on — the README's rules for metadata keys are
+# the header rules. Gating it would gate `MetadataMap` and most of `fs` with it.
+http.workspace = true
+bytes = { workspace = true, optional = true }
+get-size2 = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+tokio = { workspace = true, features = [
+  "io-util",
+  "fs",
+  "rt",
+], optional = true }
+zstd = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
 
 [dev-dependencies]
-ahash = "0.8"
+ahash.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

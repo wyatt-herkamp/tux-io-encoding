@@ -30,16 +30,26 @@ impl ValueVariant {
             unimplemented!("ValueEnum variants must have exactly one unnamed field");
         }
     }
+    /// `const_size` for one variant, including the type-key byte.
+    ///
+    /// `+ 1` for the same reason as [ValueVariant::size]: the encoding of a value is its type key
+    /// followed by the value itself.
     pub fn const_size(&self) -> TokenStream {
         let ident = &self.variant.ident;
         quote! {
-            Self::#ident(v) => v.const_size(),
+            Self::#ident(v) => v.const_size().map(|size| size + 1),
         }
     }
+
+    /// `size` for one variant: the inner value's size plus the type-key byte in front of it.
+    ///
+    /// The `+ 1` was missing, so `size()` under-reported by one byte per value while
+    /// `write_to_writer` emitted the key and `read_size` counted it. `Tags` compensated by adding a
+    /// byte per pair itself, which hid it everywhere except in direct callers.
     pub fn size(&self) -> TokenStream {
         let ident = &self.variant.ident;
         quote! {
-            Self::#ident(v) => v.size(),
+            Self::#ident(v) => v.size() + 1,
         }
     }
     #[allow(clippy::wrong_self_convention)]

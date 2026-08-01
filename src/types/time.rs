@@ -151,6 +151,53 @@ impl Debug for RawDateTime {
     }
 }
 
+#[cfg(feature = "tokio")]
+mod tokio_async {
+    //! Async support for the fixed-width date and time types.
+    //!
+    //! Each is a handful of little-endian integers, so one `read_exact` into a buffer and the synchronous
+    //! parser is both simpler and fewer awaits than field-by-field.
+
+    use tokio::io::{AsyncRead, AsyncReadExt};
+
+    use super::*;
+    use crate::{
+        EncodingError,
+        tokio_io::{AsyncReadableObjectType, AsyncWritableObjectType},
+    };
+
+    macro_rules! async_fixed_size {
+        ($($type:ty => $size:literal),* $(,)?) => {
+            $(
+                impl AsyncWritableObjectType for $type {}
+                impl AsyncReadableObjectType for $type {
+                    async fn read_from_async_reader<R>(
+                        reader: &mut R,
+                    ) -> Result<Self, EncodingError>
+                    where
+                        Self: Sync + Sized,
+                        R: AsyncRead + Unpin + Send,
+                    {
+                        let mut buffer = [0u8; $size];
+                        reader
+                            .read_exact(&mut buffer)
+                            .await
+                            .map_err(EncodingError::IOError)?;
+                        <$type as ReadableObjectType>::read_from_bytes(&buffer)
+                    }
+                }
+            )*
+        };
+    }
+
+    async_fixed_size!(
+        RawDate => 4,
+        RawTime => 8,
+        RawTimeZone => 4,
+        RawDateTime => 16,
+    );
+}
+
 #[cfg(feature = "get-size2")]
 mod get_size_impl {
     use get_size2::GetSize;

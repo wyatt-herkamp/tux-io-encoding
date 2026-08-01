@@ -59,3 +59,91 @@ mod get_size2_impl {
         }
     }
 }
+
+#[cfg(feature = "tokio")]
+mod tokio_async {
+    //! Async support for [ValueType].
+    //!
+    //! A value is a type key then the value itself, so this reads the key, then dispatches to the inner
+    //! type's async reader. `ValueType` had no async impl at all, which meant nothing that *contains*
+    //! values — metadata, tags — could have one either.
+
+    use tokio::io::{AsyncRead, AsyncReadExt};
+
+    use super::*;
+    use crate::tokio_io::{AsyncReadableObjectType, AsyncWritableObjectType};
+
+    impl AsyncWritableObjectType for ValueType {}
+    impl AsyncReadableObjectType for ValueType {
+        async fn read_from_async_reader<R>(reader: &mut R) -> Result<Self, EncodingError>
+        where
+            Self: Sync + Sized,
+            R: AsyncRead + Unpin + Send,
+        {
+            let type_key = reader.read_u8().await.map_err(EncodingError::IOError)?;
+            match type_key {
+                <String as ConstTypedObjectType>::TYPE_KEY => Ok(ValueType::String(
+                    String::read_from_async_reader(reader).await?,
+                )),
+                <Vec<u8> as ConstTypedObjectType>::TYPE_KEY => Ok(ValueType::Bytes(
+                    <Vec<u8>>::read_from_async_reader(reader).await?,
+                )),
+                <bool as ConstTypedObjectType>::TYPE_KEY => {
+                    let byte = reader.read_u8().await.map_err(EncodingError::IOError)?;
+                    match byte {
+                        0 => Ok(ValueType::Bool(false)),
+                        1 => Ok(ValueType::Bool(true)),
+                        byte => Err(EncodingError::InvalidValue {
+                            type_name: "bool",
+                            byte,
+                        }),
+                    }
+                }
+                <u8 as ConstTypedObjectType>::TYPE_KEY => {
+                    Ok(ValueType::U8(u8::read_from_async_reader(reader).await?))
+                }
+                <u16 as ConstTypedObjectType>::TYPE_KEY => {
+                    Ok(ValueType::U16(u16::read_from_async_reader(reader).await?))
+                }
+                <u32 as ConstTypedObjectType>::TYPE_KEY => {
+                    Ok(ValueType::U32(u32::read_from_async_reader(reader).await?))
+                }
+                <u64 as ConstTypedObjectType>::TYPE_KEY => {
+                    Ok(ValueType::U64(u64::read_from_async_reader(reader).await?))
+                }
+                <i8 as ConstTypedObjectType>::TYPE_KEY => {
+                    Ok(ValueType::I8(i8::read_from_async_reader(reader).await?))
+                }
+                <i16 as ConstTypedObjectType>::TYPE_KEY => {
+                    Ok(ValueType::I16(i16::read_from_async_reader(reader).await?))
+                }
+                <i32 as ConstTypedObjectType>::TYPE_KEY => {
+                    Ok(ValueType::I32(i32::read_from_async_reader(reader).await?))
+                }
+                <i64 as ConstTypedObjectType>::TYPE_KEY => {
+                    Ok(ValueType::I64(i64::read_from_async_reader(reader).await?))
+                }
+                <f32 as ConstTypedObjectType>::TYPE_KEY => {
+                    Ok(ValueType::F32(f32::read_from_async_reader(reader).await?))
+                }
+                <f64 as ConstTypedObjectType>::TYPE_KEY => {
+                    Ok(ValueType::F64(f64::read_from_async_reader(reader).await?))
+                }
+                <RawDate as ConstTypedObjectType>::TYPE_KEY => Ok(ValueType::Date(
+                    RawDate::read_from_async_reader(reader).await?,
+                )),
+                <RawTime as ConstTypedObjectType>::TYPE_KEY => Ok(ValueType::Time(
+                    RawTime::read_from_async_reader(reader).await?,
+                )),
+                <RawDateTime as ConstTypedObjectType>::TYPE_KEY => Ok(ValueType::RawDateTime(
+                    RawDateTime::read_from_async_reader(reader).await?,
+                )),
+                #[cfg(feature = "uuid")]
+                <uuid::Uuid as ConstTypedObjectType>::TYPE_KEY => Ok(ValueType::Uuid(
+                    uuid::Uuid::read_from_async_reader(reader).await?,
+                )),
+                other => Err(EncodingError::UnknownTypeKey(other)),
+            }
+        }
+    }
+}

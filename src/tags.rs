@@ -7,7 +7,7 @@ use std::{
 mod meta_key;
 use crate::{
     EncodingError, ReadableObjectType, TuxIOType, ValueType, WritableObjectType,
-    types::is_size_allowed,
+    types::count_is_allowed,
 };
 pub use meta_key::*;
 pub trait TagKeyType:
@@ -59,6 +59,38 @@ impl<Key: TagKeyType> Tags<Key> {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+    pub fn with_capacity(capacity: usize) -> Self {
+        Tags(HashMap::with_capacity(capacity))
+    }
+    pub fn contains_key<Q>(&self, key: &Q) -> bool
+    where
+        Key: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        self.0.contains_key(key)
+    }
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+    pub fn iter(&self) -> std::collections::hash_map::Iter<'_, Key, ValueType> {
+        self.0.iter()
+    }
+    pub fn keys(&self) -> std::collections::hash_map::Keys<'_, Key, ValueType> {
+        self.0.keys()
+    }
+    pub fn values(&self) -> std::collections::hash_map::Values<'_, Key, ValueType> {
+        self.0.values()
+    }
+    /// Inserts a value only when the key is absent, returning whether it was inserted.
+    pub fn insert_if_absent(&mut self, key: Key, value: ValueType) -> bool {
+        match self.0.entry(key) {
+            std::collections::hash_map::Entry::Occupied(_) => false,
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(value);
+                true
+            }
+        }
+    }
     pub fn find_from_reader<R: Read + Seek>(
         reader: &mut R,
         key: &Key,
@@ -80,16 +112,45 @@ impl<Key: TagKeyType> Tags<Key> {
     }
 }
 
+impl<Key: TagKeyType> FromIterator<(Key, ValueType)> for Tags<Key> {
+    fn from_iter<I: IntoIterator<Item = (Key, ValueType)>>(iter: I) -> Self {
+        Tags(iter.into_iter().collect())
+    }
+}
+impl<Key: TagKeyType> Extend<(Key, ValueType)> for Tags<Key> {
+    fn extend<I: IntoIterator<Item = (Key, ValueType)>>(&mut self, iter: I) {
+        self.0.extend(iter);
+    }
+}
+impl<Key: TagKeyType> IntoIterator for Tags<Key> {
+    type Item = (Key, ValueType);
+    type IntoIter = std::collections::hash_map::IntoIter<Key, ValueType>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+impl<'tags, Key: TagKeyType> IntoIterator for &'tags Tags<Key> {
+    type Item = (&'tags Key, &'tags ValueType);
+    type IntoIter = std::collections::hash_map::Iter<'tags, Key, ValueType>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
 impl<Tag: TagKeyType> TuxIOType for Tags<Tag> {
+    /// The `u16` pair count, then every key and value.
+    ///
+    /// `ValueType::size()` covers the type-key byte in front of each value, so there is nothing to add
+    /// per pair here. This used to add `1` itself, compensating for that byte being missing from
+    /// `ValueType::size()` — the compensation was right and the type was wrong.
     fn size(&self) -> usize {
-        // Calculate the size as the sum of the sizes of all tags
-        let size_of_contents: usize = self.0.iter().map(|(k, v)| k.size() + 1 + v.size()).sum();
-        size_of_contents + 2 // Add 2 bytes for the tag count
+        let size_of_contents: usize = self.0.iter().map(|(k, v)| k.size() + v.size()).sum();
+        size_of_contents + 2
     }
 }
 impl<Tag: TagKeyType> WritableObjectType for Tags<Tag> {
     fn write_to_writer<W: Write>(&self, writer: &mut W) -> Result<(), EncodingError> {
-        is_size_allowed(self.0.len())?;
+        count_is_allowed("Tags", self.0.len())?;
         (self.0.len() as u16).write_to_writer(writer)?;
         for (key, value) in &self.0 {
             // Write the key length and key
@@ -101,16 +162,22 @@ impl<Tag: TagKeyType> WritableObjectType for Tags<Tag> {
     }
 }
 impl<Tag: TagKeyType> ReadableObjectType for Tags<Tag> {
+    /// Measures the encoded size of the tag block starting at the reader's current position.
+    ///
+    /// Offsets are tracked relative to where the block starts, so this works for a block sitting
+    /// at any offset in a file — not just at the beginning of the reader. The cursor is left at
+    /// the end of the block.
     fn read_size<R: Read + Seek>(reader: &mut R) -> Result<usize, EncodingError> {
+        let block_start = reader.stream_position()?;
         let tags_count = u16::read_from_reader(reader)? as usize;
         let mut total_size = 2_usize;
         for _ in 0..tags_count {
             let key_size = Tag::read_size(reader)?;
             total_size += key_size;
-            reader.seek(std::io::SeekFrom::Start(total_size as u64))?;
+            reader.seek(std::io::SeekFrom::Start(block_start + total_size as u64))?;
             let value_size = ValueType::read_size(reader)?;
             total_size += value_size;
-            reader.seek(std::io::SeekFrom::Start(total_size as u64))?;
+            reader.seek(std::io::SeekFrom::Start(block_start + total_size as u64))?;
         }
         Ok(total_size)
     }
@@ -130,6 +197,46 @@ impl<Tag: TagKeyType> ReadableObjectType for Tags<Tag> {
         Ok(Tags(tags))
     }
 }
+#[cfg(feature = "tokio")]
+mod tokio_async {
+    //! Async support for a tag or metadata block.
+    //!
+    //! The count, then each key and value in turn. Bounded by the format — a metadata block has to fit
+    //! in the first 64 KiB of the file — so reading it whole is fine, and the per-entry awaits here just
+    //! avoid needing a separate buffering step in the caller.
+
+    use tokio::io::{AsyncRead, AsyncReadExt};
+
+    use crate::{
+        EncodingError, TagKeyType, Tags, ValueType,
+        tokio_io::{AsyncReadableObjectType, AsyncWritableObjectType},
+    };
+
+    impl<Key: TagKeyType + Sync> AsyncWritableObjectType for Tags<Key> {}
+
+    // `Send` on the key as well as `Sync`: a key is held across the await that reads its value, so the
+    // returned future is only `Send` — which the trait requires — if the key is too.
+    impl<Key> AsyncReadableObjectType for Tags<Key>
+    where
+        Key: TagKeyType + Send + Sync + AsyncReadableObjectType,
+    {
+        async fn read_from_async_reader<R>(reader: &mut R) -> Result<Self, EncodingError>
+        where
+            Self: Sync + Sized,
+            R: AsyncRead + Unpin + Send,
+        {
+            let count = reader.read_u16_le().await.map_err(EncodingError::IOError)? as usize;
+            let mut tags = std::collections::HashMap::with_capacity(count);
+            for _ in 0..count {
+                let key = Key::read_from_async_reader(reader).await?;
+                let value = ValueType::read_from_async_reader(reader).await?;
+                tags.insert(key, value);
+            }
+            Ok(Tags(tags))
+        }
+    }
+}
+
 #[cfg(feature = "get-size2")]
 mod get_size2 {
     use get_size2::GetSize;

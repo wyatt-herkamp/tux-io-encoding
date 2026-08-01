@@ -69,6 +69,9 @@ where
     V: TuxIOType + TypedObjectType + WritableObjectType,
 {
     fn write_to_writer<W: std::io::Write>(&self, writer: &mut W) -> Result<(), EncodingError> {
+        // Checked, not just cast: `self.len() as u16` wraps, so a map of more than 65535 entries wrote a
+        // count that disagreed with the entries following it — a corrupt block, with no error raised.
+        crate::types::count_is_allowed("HashMap", self.len())?;
         let length = self.len() as u16;
         length.write_to_writer(writer)?;
         K::type_key().write_to_writer(writer)?;

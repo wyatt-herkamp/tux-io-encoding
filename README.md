@@ -11,25 +11,42 @@ The Object layout is as follows
 | Content (User Controlled) |
 ```
 ### Content Alignment and Padding
-When a new file is created. After the file metadata and tags are written we will add padding up to ensure that the content atleast starts at the 256 byte mark.
+Each of the metadata and tag sections is followed by padding, so that small changes to either do not
+require rewriting the content. Both offsets are aligned to a 32 byte boundary.
 
-After that. They will be aligned to 32 byte boundaries. The purpose of this is to ensure that small changes to the file tags or metadata do not require rewriting the entire file.
+By default (`LayoutOptions::default`) each section gets **256 spare bytes**:
+
+```
+tags_start    = align_up(32 + metadata_size + 256, 32)
+content_start = align_up(tags_start + tags_size + 256, 32)
+```
+
+so an object with small metadata and tags puts its content around offset 544. `LayoutOptions::packed`
+sets both reserves and the alignment to nothing, for objects whose metadata will never change.
+
+When an existing object is rewritten, its current `content_start` is reused as a floor and the prefix is
+re-partitioned between the two sections instead of applying the reserves again — otherwise a repeatedly
+updated object's content would creep forward on every write. See `LayoutOptions::repartition`.
 
 
 ### File Head
 The File Header is 32 bytes long and contains metadata about the file. It is used to identify the file format and provide information about the content.
 After the first 4 bytes. The content and ordering could change in the future.
 
-| Name                 | Size     | Note |
-| -------------------  | ----     | ------ |
-| Magic Value          | 3 bytes  | A byte array of b'TUX' or [0x54, 0x55, 0x58] |
-| Version              | 1 byte   | Currently 0 |
-| Tags Start           | 2 bytes  | Starting Byte for the tags. This includes the size of the ObjectHeader if set to 0 no tags |
-| Compression Type     | 5 byte   | See Compression Type Below |
-| Content Start        | 4 bytes  | Starting Byte for the content. This includes the size of the ObjectHeader and the tags. |
-| Content Length       | 8 bytes  |  |
-| Bit Flags            | 1 byte   | Bit flags for additional metadata(Reserved should be 0 until defined layer) |
-| PlaceHolder/Reserved | 8 bytes  | I wanted this to have extra room just in case. Also makes this object an even 32 bytes|
+| Offset | Name                 | Size     | Note |
+| ------ | -------------------  | ----     | ------ |
+| 0      | Magic Value          | 3 bytes  | A byte array of b'TUX' or [0x54, 0x55, 0x58] |
+| 3      | Version              | 1 byte   | Currently 0 |
+| 4      | Compression Type     | 5 bytes  | See Compression Type Below |
+| 9      | Tags Start           | 2 bytes  | Starting Byte for the tags. This includes the size of the ObjectHeader if set to 0 no tags |
+| 11     | Content Start        | 4 bytes  | Starting Byte for the content. This includes the size of the ObjectHeader and the tags. |
+| 15     | Content Length       | 8 bytes  |  |
+| 23     | Bit Flags            | 1 byte   | Bit flags for additional metadata(Reserved should be 0 until defined layer) |
+| 24     | PlaceHolder/Reserved | 8 bytes  | Extra room for future fields. Also makes this object an even 32 bytes. Must be zero. |
+
+These offsets are pinned by `header::tests::the_header_layout_is_byte_for_byte_stable`, which is the
+authority if this table and the code disagree. They did: `Tags Start` was listed ahead of
+`Compression Type`, the opposite of what is written.
 
 ### File Metadata
 File Meta is stored in the same structure as Tags.
@@ -43,26 +60,36 @@ File Meta is stored in the same structure as Tags.
 Metadata should be as small as possible and only store data that is deemed necessary for the system to function. The overall goal of metadata is also to be searchable. So you can say get me the value of the `content_type`  It will not return all
 
 ### Data Types
-| data type     | Type Key  |
-| ------------- | --------- |
-| byte          | 0         |
-| u16           | 1         |
-| u32           | 2         |
-| u64           | 3         |
-| i8            | 4         |
-| i16           | 5         |
-| i32           | 6         |
-| i64           | 7         |
-| f32           | 8         |
-| f64           | 9         |
-| boolean       | 10        |
-| byte array    | 11        |
-| string        | 12        |
-| date          | 13        |
-| time          | 14        |
-| timezone      | 15        |
-| datetime      | 16        |
-| uuid          | 17        |
+The type key identifies a value's type wherever a value is stored dynamically — in a tag or metadata
+map. It is one byte, written immediately before the value.
+
+| data type     | Type Key  | Rust type(s)                             | Encoded size |
+| ------------- | --------- | ---------------------------------------- | ------------ |
+| byte          | 0         | `u8`                                     | 1            |
+| u16           | 1         | `u16`                                    | 2            |
+| u32           | 2         | `u32`                                    | 4            |
+| u64           | 3         | `u64`                                    | 8            |
+| i8            | 4         | `i8`                                     | 1            |
+| i16           | 5         | `i16`                                    | 2            |
+| i32           | 6         | `i32`                                    | 4            |
+| i64           | 7         | `i64`                                    | 8            |
+| f32           | 8         | `f32`                                    | 4            |
+| f64           | 9         | `f64`                                    | 8            |
+| boolean       | 10        | `bool`                                   | 1            |
+| byte array    | 11        | `Vec<u8>`, `[u8; N]`, `bytes::Bytes`      | 2 + len      |
+| string        | 12        | `String`, `MetaKey`                      | 2 + len      |
+| date          | 13        | `RawDate`                                | 4            |
+| time          | 14        | `RawTime`                                | 8            |
+| timezone      | 15        | `RawTimeZone`                            | 4            |
+| datetime      | 16        | `RawDateTime`                            | 16           |
+| uuid          | 17        | `uuid::Uuid`                             | 16           |
+
+Three Rust types share key 11 deliberately: they are one wire format, so a value written as any of them
+reads back as any other.
+
+The "encoded size" column excludes the type key. A `ValueType`'s own size includes it — see the size
+invariant on the `TuxIOType` trait, which requires that a type's reported size, the bytes it writes and
+the size a reader measures are all the same number.
 
 #### String
 All strings are UTF-8 encoded and limited to 65535 bytes. The string is prefixed with a u16 length field.

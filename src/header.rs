@@ -112,7 +112,7 @@ impl ReadableObjectType for ObjectHeader {
         }
         let version = Self::header_entry(&content[0..4])?;
         if version != CURRENT_VERSION {
-            return Err(EncodingError::InvalidMagic);
+            return Err(EncodingError::UnsupportedVersion(version));
         }
         let compression_type_bytes = &content[4..9];
         let compression_type = CompressionTypes::try_from(compression_type_bytes)?;
@@ -174,21 +174,17 @@ mod tokio_async {
 
     impl AsyncWritableObjectType for ObjectHeader {}
     impl AsyncReadableObjectType for ObjectHeader {
-        fn read_from_async_reader<R>(
-            reader: &mut R,
-        ) -> impl Future<Output = Result<Self, crate::EncodingError>> + Send
+        async fn read_from_async_reader<R>(reader: &mut R) -> Result<Self, crate::EncodingError>
         where
             Self: Sync + Sized,
             R: AsyncRead + Unpin + Send,
         {
-            async move {
-                let mut buf = [0u8; 32];
-                reader
-                    .read_exact(&mut buf)
-                    .await
-                    .map_err(crate::EncodingError::IOError)?;
-                <ObjectHeader as ReadableObjectType>::read_from_bytes(&buf)
-            }
+            let mut buf = [0u8; 32];
+            reader
+                .read_exact(&mut buf)
+                .await
+                .map_err(crate::EncodingError::IOError)?;
+            <ObjectHeader as ReadableObjectType>::read_from_bytes(&buf)
         }
     }
 }
@@ -217,6 +213,78 @@ mod tests {
         println!("Buffer: {:?}", buffer);
         let read_header = ObjectHeader::read_from_reader(&mut buffer.as_slice()).unwrap();
         assert_eq!(header, read_header);
+    }
+
+    /// The exact byte layout of the header, offset by offset.
+    ///
+    /// This is the format's most load-bearing 32 bytes and the only part every reader must agree on, so
+    /// the layout is pinned here rather than described. The README's table had `Tags Start` and
+    /// `Compression Type` the other way round from what this writes; a table is documentation and can
+    /// be wrong, whereas this fails.
+    #[test]
+    fn the_header_layout_is_byte_for_byte_stable() {
+        let header = ObjectHeader {
+            version: CURRENT_VERSION,
+            compression_type: CompressionTypes::ZSTD(
+                crate::compression_types::ZStdCompressionType(3),
+            ),
+            tags_start: 0x0102,
+            content_start: 0x0304_0506,
+            content_length: 0x0708_090A_0B0C_0D0E,
+            bit_flags: 0xFF,
+        };
+
+        let encoded = header.write_to_bytes().unwrap();
+        assert_eq!(encoded.len(), 32, "the header is always 32 bytes");
+
+        // Magic, then version.
+        assert_eq!(&encoded[0..3], b"TUX");
+        assert_eq!(encoded[3], CURRENT_VERSION);
+        // Compression: one discriminator byte then four bytes of codec data. Before `tags_start`.
+        assert_eq!(encoded[4], 1, "ZSTD's discriminator");
+        assert_eq!(&encoded[5..9], &3i32.to_le_bytes());
+        // Then the two offsets and the length, all little-endian.
+        assert_eq!(&encoded[9..11], &0x0102u16.to_le_bytes());
+        assert_eq!(&encoded[11..15], &0x0304_0506u32.to_le_bytes());
+        assert_eq!(&encoded[15..23], &0x0708_090A_0B0C_0D0Eu64.to_le_bytes());
+        assert_eq!(encoded[23], 0xFF, "bit flags");
+        // The rest is reserved and must be zeroed, so a future field starts from a known state.
+        assert_eq!(&encoded[24..32], &[0u8; 8], "reserved bytes must be zero");
+
+        assert_eq!(ObjectHeader::read_from_bytes(&encoded).unwrap(), header);
+    }
+
+    /// A header from a future version is refused as an unsupported version, not as bad magic.
+    #[test]
+    fn a_future_version_is_reported_as_a_version_problem() {
+        let mut encoded = ObjectHeader::default().write_to_bytes().unwrap();
+        encoded[3] = CURRENT_VERSION + 1;
+
+        let error = ObjectHeader::read_from_bytes(&encoded).expect_err("a newer version");
+        assert!(
+            matches!(error, EncodingError::UnsupportedVersion(version) if version == CURRENT_VERSION + 1),
+            "got {error:?}"
+        );
+    }
+
+    /// Something that is not a TuxIO object at all is refused on the magic value.
+    #[test]
+    fn a_file_that_is_not_an_object_fails_on_the_magic_value() {
+        let error = ObjectHeader::read_from_bytes(&[0u8; 32]).expect_err("not an object");
+        assert!(
+            matches!(error, EncodingError::InvalidMagic),
+            "got {error:?}"
+        );
+    }
+
+    /// Fewer than 32 bytes is a truncated file.
+    #[test]
+    fn a_short_header_is_a_short_read() {
+        let error = ObjectHeader::read_from_bytes(b"TUX").expect_err("too short");
+        assert!(
+            matches!(error, EncodingError::UnexpectedEof),
+            "got {error:?}"
+        );
     }
 
     #[test]
