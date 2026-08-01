@@ -14,7 +14,7 @@ rust-version = "1.89"
 [workspace.dependencies]
 proc-macro2 = "1"
 quote = "1"
-syn = { version = "2.0", features = ["full"] }
+syn = { version = "3", features = ["full"] }
 thiserror = "2"
 uuid = "1"
 http = "1"

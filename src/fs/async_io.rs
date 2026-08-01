@@ -395,7 +395,9 @@ async fn decode_blocking(
 ) -> ObjectFileResult<Vec<u8>> {
     ensure_supported(compression)?;
     tokio::task::spawn_blocking(move || -> ObjectFileResult<Vec<u8>> {
+        #[allow(unused_imports)]
         use std::io::Read;
+        #[allow(unused)]
         let mut decoded = Vec::new();
         match compression {
             CompressionTypes::None(_) => decoded = stored,
